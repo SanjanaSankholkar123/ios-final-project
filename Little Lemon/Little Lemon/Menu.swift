@@ -10,31 +10,9 @@ import SwiftUI
 struct Menu: View {
     @Environment(\.managedObjectContext) private var viewContext
     
-    func getMenuData() {
-        PersistenceController.shared.clear()
-        let url = URL(string: "https://raw.githubusercontent.com/Meta-Mobile-Developer-PC/Working-With-Data-API/main/menu.json")!
-        let request = URLRequest(url: url)
-        
-        let task = URLSession.shared.dataTask(with: request)
-        { (data, response, error) in
-            if let jsonData = data {
-                let fullMenu = try! JSONDecoder().decode(MenuList.self, from: jsonData)
-                let menuItems = fullMenu.menu
-                
-                for menuItem in menuItems{
-                    let oneDish = Dish(context: viewContext)
-                    oneDish.title = menuItem.title
-                    oneDish.price = menuItem.price
-                    oneDish.image = menuItem.image
-                    
-                    try? viewContext.save()
-                }
-            }
-        }
-        
-        
-        task.resume()
-    }
+    @State var searchText = ""
+    
+    @State var loaded = false
     
     var body: some View {
         VStack {
@@ -46,29 +24,53 @@ struct Menu: View {
             Text("Chicago")
                 .font(.system(size:25, weight: .bold))
                 .foregroundColor(Color("#495E57"))
-            Text("Description")
+            Spacer()
+                .frame(height:20)
+            Text("We are a family owned Mediterranean restaurant, focused on traditional recipes served with a modern twist.")
                 .font(.system(size:15))
                 .foregroundColor(Color("#495E57"))
-            FetchedObjects() { (dishes: [Dish]) in
-                List{
-                    ForEach(dishes) { dish in
-                        HStack{
-                            Text("\(dish.title!), \(dish.price!)")
-                            AsyncImage(url: URL(string: dish.image!))
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 75)
-                        }
-                    }
-                }
-            }
+            TextField("Search menu", text: $searchText)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .multilineTextAlignment(.leading)
+                .padding(.horizontal, 16)
+            
+            FetchedObjects(predicate: buildPredicate(),
+                                           sortDescriptors: buildSortDescriptors()) {
+                                (dishes: [Dish]) in
+                                List(dishes) { dish in
+                                    FormatMenuItem(dish: dish)
+                                }
+                                .listStyle(.plain)
+                            }
             Spacer()
         }
         .background(Color("#EDEFEE"))
-        onAppear(perform: getMenuData)
+        .onAppear {
+                    if !loaded {
+                        MenuList.getMenuData(viewContext: viewContext)
+                        loaded = true
+                    }
+                }
+    }
+    
+    func buildSortDescriptors() -> [NSSortDescriptor] {
+        return [NSSortDescriptor(key: "title",
+                                          ascending: true,
+                                          selector:
+                                            #selector(NSString.localizedStandardCompare))]
+    }
+    
+    func buildPredicate() -> NSPredicate {
+        if (searchText.isEmpty) {
+            return NSPredicate(value: true)
+        } else {
+            return NSPredicate(format: "title CONTAINS[cd] %@", searchText)
+        }
     }
 }
 
+
 #Preview {
     Menu()
+        .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
 }
